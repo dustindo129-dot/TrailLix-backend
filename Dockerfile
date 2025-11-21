@@ -20,7 +20,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # Install build tools and OpenSSL for native dependencies
-RUN apk add --no-cache python3 make g++ openssl1.1-compat
+RUN apk add --no-cache python3 make g++ openssl-dev
 
 # Copy source code
 COPY . .
@@ -42,8 +42,10 @@ ENV NODE_ENV production
 # Uncomment the following line in case you want to disable telemetry during runtime.
 # ENV NEXT_TELEMETRY_DISABLED 1
 
-# Install OpenSSL 1.1 compatibility for Prisma
-RUN apk add --no-cache openssl1.1-compat
+# Install OpenSSL compatibility for Prisma
+RUN apk add --no-cache openssl libssl3 && \
+    ln -sf /usr/lib/libssl.so.3 /usr/lib/libssl.so.1.1 && \
+    ln -sf /usr/lib/libcrypto.so.3 /usr/lib/libcrypto.so.1.1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nestjs
