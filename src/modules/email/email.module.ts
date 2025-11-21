@@ -5,4 +5,6 @@ import { EmailService } from './email.service';
   providers: [EmailService],
   exports: [EmailService],
 })
-export class EmailModule {}
+export class EmailModule {
+  // EmailModule is already global via ConfigModule in AppModule
+}

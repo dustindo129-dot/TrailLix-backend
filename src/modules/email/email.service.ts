@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
 export interface EmailOptions {
@@ -13,22 +14,48 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private transporter: nodemailer.Transporter;
 
-  constructor() {
+  constructor(private configService: ConfigService) {
     this.createTransporter();
   }
 
   private createTransporter() {
+    const emailConfig = this.configService.get('email');
+    
+    // Support both config module and direct env variables for backward compatibility
+    const host = emailConfig?.host || process.env.SMTP_HOST;
+    const user = emailConfig?.user || process.env.SMTP_USER;
+    const password = emailConfig?.pass || process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
+    const port = emailConfig?.port || parseInt(process.env.SMTP_PORT || '587', 10);
+    const secure = emailConfig?.secure !== undefined 
+      ? emailConfig.secure 
+      : process.env.SMTP_SECURE === 'true' || port === 465;
+
     // Only create transporter if SMTP is configured
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-      this.transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT) || 587,
-        secure: false, // true for 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD,
-        },
-      });
+    if (host && user && password) {
+      // Use Gmail service if host is Gmail (simplifies configuration)
+      const isGmail = host.includes('gmail.com');
+      
+      this.transporter = nodemailer.createTransport(
+        isGmail
+          ? {
+              service: 'gmail',
+              auth: {
+                user,
+                pass: password,
+              },
+            }
+          : {
+              host,
+              port,
+              secure, // true for 465, false for other ports
+              auth: {
+                user,
+                pass: password,
+              },
+            }
+      );
+      
+      this.logger.log(`SMTP transporter configured for ${isGmail ? 'Gmail' : host}:${isGmail ? '587' : port}`);
     } else {
       this.logger.warn('SMTP not configured. Email sending will be disabled.');
     }
@@ -41,8 +68,11 @@ export class EmailService {
     }
 
     try {
+      const emailConfig = this.configService.get('email');
+      const fromEmail = emailConfig?.from || process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'noreply@traillix.com';
+      
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'noreply@traillix.com',
+        from: fromEmail,
         ...options,
       };
 
