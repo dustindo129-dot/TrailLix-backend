@@ -23,7 +23,7 @@ RUN npm ci
 COPY . .
 
 # Generate Prisma Client
-RUN npm run db:generate
+RUN npm exec prisma generate
 
 # Build the application
 RUN npm run build
