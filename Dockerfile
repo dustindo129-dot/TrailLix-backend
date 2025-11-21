@@ -19,11 +19,17 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+# Install build tools for native dependencies
+RUN apk add --no-cache python3 make g++
+
 # Copy source code
 COPY . .
 
 # Set execute permissions for all binaries and generate Prisma Client
 RUN chmod +x node_modules/.bin/* && npm exec prisma generate
+
+# Rebuild native dependencies for Alpine Linux
+RUN npm rebuild bcrypt --build-from-source
 
 # Build the application
 RUN npm run build
