@@ -22,8 +22,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Generate Prisma Client  
-RUN chmod +x node_modules/.bin/prisma && npm exec prisma generate
+# Set execute permissions for all binaries and generate Prisma Client
+RUN chmod +x node_modules/.bin/* && npm exec prisma generate
 
 # Build the application
 RUN npm run build
