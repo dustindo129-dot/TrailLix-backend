@@ -1,0 +1,434 @@
+// TRAILIX Database Schema
+// AI Prompt Engineering Education Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Users table - Complete user management with gamification and personalization
+model User {
+  id                String   @id @default(cuid())
+  external_auth_id  String?  @unique // For OAuth providers
+  email            String   @unique
+  name             String   @default("")
+  role             Role     @default(STUDENT)
+  avatar_url       String?
+  password_hash    String?
+  email_verified   Boolean  @default(false)
+  
+  // Gamification fields
+  xp               Int      @default(0)
+  level            Int      @default(1)
+  streak           Int      @default(0)
+  longest_streak   Int      @default(0)
+  last_login       DateTime @default(now())
+  
+  // Personalization fields
+  age_range        String?
+  role_description String?
+  ai_experience    String?
+  skills           String[] @default([])
+  achievement      String?
+  fields           String[] @default([])
+  motivations      String[] @default([])
+  
+  // Course tracking
+  course_start_date         DateTime?
+  has_seen_concepts_intro   Boolean  @default(false)
+  has_seen_evaluation_onboarding Boolean  @default(false)
+  
+  // Subscription tracking
+  free_lessons_used         Int      @default(0)  // Track how many free lessons user has completed
+  subscription_status       SubscriptionStatus @default(ACTIVE)
+  subscription_end_date     DateTime?  // When current subscription expires
+  
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relations
+  authored_courses Course[]      @relation("CourseAuthor")
+  enrollments      Enrollment[]
+  orders           Order[]
+  subscriptions    Subscription[]
+  course_progress  Progress[]    // For regular course progress
+  lesson_progress  LessonProgress[]  @relation("UserLessonProgress") // For AI lesson progress
+  lesson_attempts  LessonAttempt[]
+  personalized_content PersonalizedLessonContent[]
+  certificate      Certificate?
+  audit_logs_actor AuditLog[]     @relation("AuditActor")
+  xp_events        XpEvent[]     // Track XP awards to prevent farming
+
+  @@map("users")
+}
+
+// Courses table - Basic course structure (matching database)
+model Course {
+  id              String      @id @default(cuid())
+  title           String
+  slug            String      @unique
+  description     String
+  price_cents     Int         @default(0)
+  currency        Currency    @default(VND)
+  visibility      Visibility  @default(PUBLIC)
+  author_id       String
+  media_policy    String      @default("standard")
+  thumbnail_url   String?
+  category        String?
+  tags            String[]    @default([])
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  // Relations
+  author          User         @relation("CourseAuthor", fields: [author_id], references: [id], onDelete: Cascade)
+  course_lessons  CourseLesson[] // Separate from AI lessons
+  enrollments     Enrollment[]
+  order_items     OrderItem[]
+
+  @@map("courses")
+}
+
+// Course Lessons table - Regular course lessons
+model CourseLesson {
+  id               String   @id @default(cuid())
+  course_id        String
+  title            String
+  order_index      Int
+  duration_s       Int      @default(0)
+  video_asset_id   String?
+  video_url        String?
+  content          String?
+  is_free_preview  Boolean  @default(false)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relations
+  course           Course     @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  progress         Progress[]
+
+  @@unique([course_id, order_index])
+  @@map("lessons")
+}
+
+// AI Lessons table - AI Prompt Engineering lessons (hardcoded in code, referenced by lesson_id)
+model Lesson {
+  id             Int      @id // Matches lesson.id from lessons.ts
+  title_en       String
+  title_vi       String
+  category_en    String
+  category_vi    String
+  order_index    Int      @unique
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  progress         LessonProgress[]
+  lesson_attempts  LessonAttempt[]
+  personalized_content PersonalizedLessonContent[]
+
+  @@map("ai_lessons")
+}
+
+// Enrollments table - User course enrollments
+model Enrollment {
+  id         String           @id @default(cuid())
+  user_id    String
+  course_id  String
+  source     EnrollmentSource
+  status     EnrollmentStatus @default(ACTIVE)
+  created_at DateTime         @default(now())
+  updated_at DateTime         @updatedAt
+
+  // Relations
+  user       User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  course     Course           @relation(fields: [course_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, course_id])
+  @@map("enrollments")
+}
+
+// Lesson Attempts - User's attempts at each lesson
+model LessonAttempt {
+  id                       String   @id @default(cuid())
+  user_id                  String
+  lesson_id                Int
+  
+  // Simple practice
+  simple_prompt            String?
+  simple_evaluation_score  Int?
+  simple_evaluation_feedback String?
+  simple_evaluation_suggestion String?
+  simple_is_complete       Boolean  @default(false)
+  
+  // Personalized practice
+  personalized_prompt      String?
+  personalized_evaluation_score  Int?
+  personalized_evaluation_feedback String?
+  personalized_evaluation_suggestion String?
+  personalized_is_complete Boolean  @default(false)
+  
+  // AI sample response
+  sample_response          String?
+  
+  // Stage tracking for XP
+  visited_stages           String[] @default([])
+  
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  // Relations
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lesson_id])
+  @@map("lesson_attempts")
+}
+
+// Personalized Lesson Content - AI-generated personalized content
+model PersonalizedLessonContent {
+  id                    String   @id @default(cuid())
+  user_id               String
+  lesson_id             Int
+  locale                String   // 'en' or 'vi'
+  
+  real_world_scenario   String
+  personalized_exercise String
+  application_guide     String
+  full_prompt           String
+  components            Json     // Array of {labelKey, text}
+  
+  created_at            DateTime @default(now())
+
+  // Relations
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lesson_id, locale])
+  @@map("personalized_lesson_content")
+}
+
+// Lesson Progress table - User lesson completion tracking (for AI lessons)
+model LessonProgress {
+  id             String   @id @default(cuid())
+  user_id        String
+  lesson_id      Int
+  completed      Boolean  @default(false)
+  completed_at   DateTime?
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  user   User   @relation("UserLessonProgress", fields: [user_id], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lesson_id])
+  @@map("lesson_progress")
+}
+
+// Certificates - Awarded upon course completion
+model Certificate {
+  id                 String   @id @default(cuid())
+  user_id            String   @unique
+  certificate_number String   @unique
+  name               String
+  start_date         DateTime?
+  completion_date    DateTime @default(now())
+  checkpoints        Int      // Number of lessons completed
+  total_checkpoints  Int      // Total number of lessons
+  rank               String   // User's rank at completion
+  total_xp           Int      // User's total XP at completion
+  longest_streak     Int      // User's longest streak
+  created_at         DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("certificates")
+}
+
+// Orders table - Payment transactions (kept for future premium features)
+model Order {
+  id                      String      @id @default(cuid())
+  user_id                 String
+  amount_cents            Int
+  currency                Currency    @default(VND)
+  status                  OrderStatus @default(PENDING)
+  provider                String      @default("qr_payment")
+  ext_session_id          String?     @unique
+  ext_payment_intent_id   String?     @unique
+  qr_code_data           String?     // QR code content for Vietnamese payment
+  transfer_content       String?     // Transfer reference code
+  payment_method         String?     // 'bank_transfer', 'qr_code', 'momo', 'zalopay'
+  product_type           String      @default("course_access") // 'course_access', 'premium_features', etc.
+  notes                  String?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime    @updatedAt
+
+  // Relations
+  user          User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  payments      PaymentLedger[]
+  order_items   OrderItem[]
+
+  @@map("orders")
+}
+
+// Payment Ledger table - Accounting ledger for all transactions
+model PaymentLedger {
+  id           String      @id @default(cuid())
+  order_id     String
+  type         LedgerType
+  account      String
+  amount_cents Int
+  description  String?
+  created_at   DateTime    @default(now())
+
+  // Relations
+  order Order @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@map("payments_ledger")
+}
+
+// Subscriptions table - User subscription payments
+model Subscription {
+  id                    String             @id @default(cuid())
+  user_id               String
+  status                SubscriptionStatus @default(ACTIVE)
+  plan_type             String             @default("monthly") // monthly, yearly, lifetime
+  amount                Float              // Amount paid
+  currency              Currency           @default(VND)
+  payment_method        String?            // "qr_code", "bank_transfer", etc.
+  transaction_id        String?            // External payment transaction ID
+  start_date            DateTime           @default(now())
+  end_date              DateTime           // When this subscription period ends
+  auto_renew            Boolean            @default(false)
+  created_at            DateTime           @default(now())
+  updated_at            DateTime           @updatedAt
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, status])
+  @@map("subscriptions")
+}
+
+// Order Items table - Items in orders
+model OrderItem {
+  id                String  @id @default(cuid())
+  order_id          String
+  course_id         String
+  unit_price_cents  Int
+  qty               Int     @default(1)
+
+  // Relations
+  order             Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  course            Course  @relation(fields: [course_id], references: [id], onDelete: Cascade)
+
+  @@unique([order_id, course_id])
+  @@map("order_items")
+}
+
+// Progress table - User lesson completion tracking
+model Progress {
+  id              String   @id @default(cuid())
+  user_id         String
+  lesson_id       String
+  completed       Boolean  @default(false)
+  last_watched_s  Int      @default(0)
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  user            User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lesson          CourseLesson @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lesson_id])
+  @@map("progress")
+}
+
+// Audit Logs table - System activity tracking
+model AuditLog {
+  id            String   @id @default(cuid())
+  actor_user_id String
+  action        String
+  entity        String
+  entity_id     String
+  diff_json     Json?
+  ip_address    String?
+  user_agent    String?
+  created_at    DateTime @default(now())
+
+  // Relations
+  actor User @relation("AuditActor", fields: [actor_user_id], references: [id], onDelete: Cascade)
+
+  @@index([entity, entity_id])
+  @@index([actor_user_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+// XP Events - Track XP awards to prevent farming
+model XpEvent {
+  id         String   @id @default(cuid())
+  user_id    String
+  event_key  String   // Unique identifier for the XP event (e.g., "stage_1_what", "basic_submit_1")
+  xp_awarded Int
+  awarded_at DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, event_key], name: "userId_eventKey")
+  @@index([user_id])
+  @@index([event_key])
+  @@map("xp_events")
+}
+
+// Enums
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  DRAFT
+}
+
+enum EnrollmentSource {
+  PURCHASE
+  GIFT
+  SUBSCRIPTION
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum Currency {
+  VND
+  USD
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum LedgerType {
+  DEBIT
+  CREDIT
+}
+
+enum SubscriptionStatus {
+  ACTIVE      // Has active paid subscription
+  CANCELLED   // Was active, now cancelled
+  PAST_DUE    // Payment failed, grace period
+}
