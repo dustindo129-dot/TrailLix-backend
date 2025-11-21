@@ -25,11 +25,13 @@ COPY . .
 # Set execute permissions for all binaries and generate Prisma Client
 RUN chmod +x node_modules/.bin/* && npm exec prisma generate
 
-# Build the application
-RUN npm run build && ls -la dist/
+# Build the application with verbose output
+RUN npm run build 2>&1 || (echo "Build failed!" && exit 1)
 
-# Verify main.js exists
-RUN test -f dist/main.js || (echo "main.js not found!" && exit 1)
+# Debug: Show what was actually built
+RUN echo "Contents of current directory:" && ls -la
+RUN echo "Contents of dist directory:" && ls -la dist/ 2>/dev/null || echo "No dist directory found"
+RUN echo "Looking for any .js files:" && find . -name "*.js" -type f | head -10
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -57,4 +59,4 @@ EXPOSE 3000
 
 ENV PORT 3000
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/main"]
