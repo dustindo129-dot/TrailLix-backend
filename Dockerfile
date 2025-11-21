@@ -26,7 +26,10 @@ COPY . .
 RUN chmod +x node_modules/.bin/* && npm exec prisma generate
 
 # Build the application
-RUN npm run build
+RUN npm run build && ls -la dist/
+
+# Verify main.js exists
+RUN test -f dist/main.js || (echo "main.js not found!" && exit 1)
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -44,6 +47,9 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
+
+# Debug: Check what was copied
+RUN ls -la dist/ || echo "dist directory not found in runner"
 
 USER nestjs
 
