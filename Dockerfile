@@ -25,13 +25,8 @@ COPY . .
 # Set execute permissions for all binaries and generate Prisma Client
 RUN chmod +x node_modules/.bin/* && npm exec prisma generate
 
-# Build the application with verbose output
-RUN npm run build 2>&1 || (echo "Build failed!" && exit 1)
-
-# Debug: Show what was actually built
-RUN echo "Contents of current directory:" && ls -la
-RUN echo "Contents of dist directory:" && ls -la dist/ 2>/dev/null || echo "No dist directory found"
-RUN echo "Looking for any .js files:" && find . -name "*.js" -type f | head -10
+# Build the application
+RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -50,8 +45,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 
-# Debug: Check what was copied
-RUN ls -la dist/ || echo "dist directory not found in runner"
 
 USER nestjs
 
@@ -59,4 +52,4 @@ EXPOSE 3000
 
 ENV PORT 3000
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main.js"]
